@@ -93,6 +93,8 @@ const gapAfter = (minimap: Minimap, i: number) =>
 const labelledNames = (minimap: Minimap) =>
   labelsOf(minimap).map((l) => l.querySelector('.who')?.textContent);
 const hostOf = () => document.querySelector('pr-minimap') as HTMLElement;
+const timelineOf = (minimap: Minimap) =>
+  minimap.shadowRoot.querySelector('.timeline') as HTMLElement;
 
 afterEach(() => {
   for (const host of document.querySelectorAll('pr-minimap')) host.remove();
@@ -360,6 +362,82 @@ describe('Minimap', () => {
     expect(at()).not.toEqual(resting);
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: 2000, clientY: 240 }));
     expect(at()).toEqual(resting);
+  });
+
+  // The timeline sits at the window's right edge, so the pointer often leaves the window straight
+  // from it. No more moves arrive after that, so leaving has to let go of the magnification, or it
+  // would stay stuck on until the pointer came back.
+  it('lets go when the pointer leaves the window', () => {
+    const { minimap, entries, discussion } = setup();
+    minimap.setEntries(entries, discussion);
+    hoverAt(minimap, 240);
+    expect(Math.max(...dotsOf(minimap).map(scaleOf))).toBeGreaterThan(1);
+    document.documentElement.dispatchEvent(
+      new MouseEvent('pointerout', { bubbles: true, relatedTarget: null }),
+    );
+    expect(dotsOf(minimap).map(scaleOf)).toEqual([1, 1, 1]);
+  });
+
+  // Each dot on the line is its event's icon, so a comment, an approval and a merge can be told
+  // apart without reading the labels.
+  it('draws each event on the line as its icon', () => {
+    const { minimap, entries, discussion } = setup();
+    minimap.setEntries(entries, discussion);
+    expect(dotsOf(minimap).map((d) => d.dataset.icon)).toEqual([
+      'message-square',
+      'message-square',
+      'bot-message-square',
+    ]);
+    expect(dotsOf(minimap)[0]?.querySelector('svg.glyph path')).not.toBeNull();
+    expect(timelineOf(minimap).classList.contains('compact')).toBe(false);
+  });
+
+  // Where events crowd closer together than an icon is tall, the icons would pile up into a blur,
+  // so the line falls back to small dots in each event's colour.
+  it('falls back to plain dots where icons would crowd', () => {
+    const { minimap, entries, discussion } = setup({ count: 60, viewportHeight: 400 });
+    minimap.setEntries(entries, discussion);
+    expect(timelineOf(minimap).classList.contains('compact')).toBe(true);
+  });
+
+  // A day or more with nothing happening breaks the line: a gap in it between two slashes, with how
+  // long it lasted written in the gap. The break sits halfway between its two events, which get
+  // 16px of extra room for it.
+  it('marks quiet stretches on the line', () => {
+    const { minimap, els, discussion } = setup();
+    const at = (el: Element | undefined, time: string): Entry => ({
+      ...comment(el as Element, 'amy'),
+      time,
+    });
+    minimap.setEntries(
+      [
+        at(els[0], '2026-09-01T10:00:00Z'),
+        at(els[1], '2026-09-01T12:00:00Z'),
+        at(els[2], '2026-09-16T12:00:00Z'),
+      ],
+      discussion,
+    );
+    const breaks = [...minimap.shadowRoot.querySelectorAll<HTMLElement>('.break')];
+    expect(breaks.map((b) => b.textContent)).toEqual(['2w']);
+    expect(breaks[0]?.querySelectorAll('.slash')).toHaveLength(2);
+    expect(timelineOf(minimap).classList.contains('tight-breaks')).toBe(false);
+    const [a = 0, b = 0, c = 0] = dotsOf(minimap).map((d) => Number.parseFloat(d.style.top));
+    expect(Number.parseFloat(breaks[0]?.style.top ?? '')).toBeCloseTo((b + c) / 2);
+    expect(c - b).toBeCloseTo(b - a + 16);
+  });
+
+  // On a crowded line the gap is too small to write in, so the time sits beside the line instead.
+  it('writes the time beside the line where the gap is too small for it', () => {
+    const { minimap, els, discussion } = setup({ count: 60, viewportHeight: 400 });
+    const start = Date.parse('2026-09-01T10:00:00Z');
+    const hourly = els.map((el, i): Entry => {
+      const time = start + i * 3600_000 + (i >= 30 ? 3 * 86400_000 : 0);
+      return { ...comment(el, `user${i}`), time: new Date(time).toISOString() };
+    });
+    minimap.setEntries(hourly, discussion);
+    const breaks = [...minimap.shadowRoot.querySelectorAll<HTMLElement>('.break')];
+    expect(breaks.map((b) => b.textContent)).toEqual(['3d']);
+    expect(timelineOf(minimap).classList.contains('tight-breaks')).toBe(true);
   });
 
   // With the timeline hidden by the eye, hovering where it was does nothing.

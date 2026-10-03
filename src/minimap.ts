@@ -3,6 +3,8 @@ import { type FanLayout, fanLayout } from './fan';
 import { MONO, SANS } from './fonts';
 import { ICONS, type IconName } from './icons';
 import { magnify } from './magnify';
+import { NODE_ICONS, type NodeIcon } from './node-icons';
+import { type QuietStretch, quietStretches } from './quiet';
 import type { Entry, HiddenEvent, Span } from './types';
 
 /** Page measurements, behind an interface so tests can fake them (jsdom has no layout). */
@@ -48,8 +50,20 @@ const LINE_FRACTION = 0.6;
 const MAX_DOT_PITCH = 32;
 /** Room left above a scrolled-to item for GitHub's sticky header. */
 const SCROLL_OFFSET = 80;
+/** Extra room on the line where a quiet stretch breaks it, for the break's mark. */
+const BREAK_ROOM = 16;
+/** The gap a break leaves in the line: at most this tall, and tall enough to write in from... */
+const BREAK_GAP_MAX = 20;
+const BREAK_LABEL_MIN_GAP = 13;
+/** ...keeping this much clear between the break's slashes and the events either side. */
+const BREAK_CLEARANCE = 4;
+/** Size of an event on a line too crowded for icons. */
+const COMPACT_DOT = 8;
 /** Label column: at least 18px between labels, reaching 24-60px past each end of the line. */
-const FAN = { minLabelPitch: 18, minOverhang: 24, maxOverhang: 60 };
+const FAN = { minLabelPitch: 18, minOverhang: 24, maxOverhang: 60, breakRoom: BREAK_ROOM };
+/** Events are drawn as icons this size, unless they're closer together than `ICON_MIN_PITCH`. */
+const ICON_SIZE = 13;
+const ICON_MIN_PITCH = 16;
 /** Hover magnification, like the macOS Dock but subtle: dots grow by half, labels a touch. */
 const DOCK_DOTS = { radius: 80, maxScale: 1.45 };
 const DOCK_LABELS = { radius: 80, maxScale: 1.1 };
@@ -97,6 +111,9 @@ export class Minimap {
   private items: Item[] = [];
   /** Items that have a position on the page, in page order. The fan lays these out. */
   private placed: Item[] = [];
+  /** Quiet stretches between placed items, and the marks that break the line for them. */
+  private quiet: QuietStretch[] = [];
+  private readonly breaks: HTMLElement[] = [];
   private rangeEl: Element | null = null;
   private lastLayoutKey = '';
   private visible = true;
@@ -122,6 +139,12 @@ export class Minimap {
   /** Connector paths, reused from one layout to the next. */
   private readonly paths: SVGPathElement[] = [];
   private readonly onPointerMove = (e: MouseEvent) => this.trackPointer(e);
+  /** Leaving the window: no target to go to. */
+  private readonly onPointerOut = (e: MouseEvent) => {
+    if (e.relatedTarget) return;
+    this.pointerClient = null;
+    this.follow();
+  };
 
   constructor(private readonly options: MinimapOptions = {}) {
     this.geometry = options.geometry ?? browserGeometry;
@@ -165,10 +188,12 @@ export class Minimap {
     // Watched on the window, not the timeline, so the gaps between labels still count as hovering
     // without an invisible box blocking clicks on the page underneath.
     window.addEventListener('pointermove', this.onPointerMove, { passive: true });
+    window.addEventListener('pointerout', this.onPointerOut, { passive: true });
   }
 
   unmount(): void {
     window.removeEventListener('pointermove', this.onPointerMove);
+    window.removeEventListener('pointerout', this.onPointerOut);
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.host.remove();
@@ -202,6 +227,7 @@ export class Minimap {
       item.dot.hidden = !item.span;
     }
     this.placed = this.items.filter((item) => item.span);
+    this.quiet = quietStretches(this.placed.map((item) => item.entry));
     this.lastLayoutKey = '';
     this.box = null;
     this.updateViewport();
@@ -212,8 +238,9 @@ export class Minimap {
     const top = this.geometry.scrollTop();
     const viewportHeight = this.geometry.viewportHeight();
     const bottom = top + viewportHeight;
+    const quietRoom = Math.max(0, this.placed.length - 1) * MAX_DOT_PITCH;
     const lineHeight = Math.round(
-      Math.min(viewportHeight * LINE_FRACTION, Math.max(0, this.placed.length - 1) * MAX_DOT_PITCH),
+      Math.min(viewportHeight * LINE_FRACTION, quietRoom + this.quiet.length * BREAK_ROOM),
     );
 
     let pageFocus = -1;
@@ -236,7 +263,8 @@ export class Minimap {
     const layoutKey = `${this.placed.length}:${sectioned ? focus : 'all'}:${lineHeight}`;
     if (layoutKey !== this.lastLayoutKey) {
       this.lastLayoutKey = layoutKey;
-      this.render(fanLayout(this.placed.length, focus, lineHeight, FAN), lineHeight);
+      const after = this.quiet.map((q) => q.after);
+      this.render(fanLayout(this.placed.length, focus, lineHeight, FAN, after), lineHeight);
     }
 
     // Start with the top label level with the conversation (labels reach above the line's top), so
@@ -256,6 +284,10 @@ export class Minimap {
   private render(layout: FanLayout, lineHeight: number): void {
     this.layout = layout;
     setStyle(this.timeline, 'height', `${lineHeight}px`);
+    const closest = Math.min(...layout.dotYs.slice(1).map((y, i) => y - (layout.dotYs[i] ?? 0)));
+    const compact = closest < ICON_MIN_PITCH;
+    this.timeline.classList.toggle('compact', compact);
+    this.renderBreaks(layout, compact ? COMPACT_DOT : ICON_SIZE + 4);
     this.placed.forEach((item, i) => {
       setData(item.label, 'index', String(i));
     });
@@ -313,6 +345,11 @@ export class Minimap {
     const last = dots.positions.at(-1) ?? 0;
     setStyle(this.line, 'top', px(LINE_ZONE_PAD + first));
     setStyle(this.line, 'height', px(this.placed.length > 1 ? last - first : 0));
+    // Each break sits halfway between the two events either side of its quiet stretch.
+    this.quiet.forEach(({ after }, j) => {
+      const y = ((dots.positions[after] ?? 0) + (dots.positions[after + 1] ?? 0)) / 2;
+      setStyle(this.breaks[j] as HTMLElement, 'top', px(y));
+    });
 
     layout.labels.forEach(({ index }, j) => {
       const item = this.placed[index] as Item;
@@ -327,6 +364,36 @@ export class Minimap {
   }
 
   /**
+   * One mark per quiet stretch, reused from one layout to the next. Each leaves as big a gap in the
+   * line as fits between the events either side (they're all spaced alike), and the time is
+   * written in the gap, or beside the line when the gap is too small.
+   */
+  private renderBreaks(layout: FanLayout, dotSize: number): void {
+    const first = this.quiet[0];
+    if (first) {
+      const step = (layout.dotYs[first.after + 1] ?? 0) - (layout.dotYs[first.after] ?? 0);
+      const gap = Math.max(4, Math.min(BREAK_GAP_MAX, step - dotSize - 2 * BREAK_CLEARANCE));
+      setStyle(this.timeline, '--gap', px(gap));
+      this.timeline.classList.toggle('tight-breaks', gap < BREAK_LABEL_MIN_GAP);
+    }
+    while (this.breaks.length < this.quiet.length) {
+      const mark = document.createElement('div');
+      mark.className = 'break';
+      mark.setAttribute('aria-hidden', 'true');
+      // Under the dots, so a mark on a crowded line never covers an event.
+      this.line.after(mark);
+      this.breaks.push(mark);
+    }
+    while (this.breaks.length > this.quiet.length) this.breaks.pop()?.remove();
+    this.quiet.forEach(({ label }, j) => {
+      const mark = this.breaks[j] as HTMLElement;
+      if (mark.textContent === label) return;
+      mark.innerHTML = '<i class="slash"></i><i class="slash"></i><span class="quiet"></span>';
+      setText(mark, '.quiet', label);
+    });
+  }
+
+  /**
    * Pointer moves arrive far more often than frames, and from anywhere on the page. Moves that are
    * clearly nowhere near a resting timeline are dropped; the rest are handled once per frame.
    */
@@ -334,7 +401,11 @@ export class Minimap {
     this.pointerClient = { x: e.clientX, y: e.clientY };
     const resting = this.strength === 0 && this.targetStrength === 0;
     if (resting && this.box && !this.isOver(this.box, e.clientX, e.clientY)) return;
+    this.follow();
+  }
 
+  /** Brings the hover state up to date with the pointer: now in tests, otherwise next frame. */
+  private follow(): void {
     if (this.options.animate === false) {
       this.updateHover();
       this.strength = this.targetStrength;
@@ -416,6 +487,8 @@ export class Minimap {
       dot.setAttribute('aria-label', ariaLabel);
       dot.dataset.kind = entry.kind;
       dot.dataset.tone = d.tone;
+      dot.dataset.icon = d.icon;
+      dot.innerHTML = glyph(d.icon);
       if (d.isBot) dot.dataset.bot = '';
 
       const item: Item = { entry, label, dot, span: null, path: null, labelY: 0, labelScale: 1 };
@@ -595,6 +668,11 @@ function sameKey(a: unknown[], b: unknown[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
+/** An event's icon. Stroked, so its colour and weight come from CSS. */
+function glyph(name: NodeIcon): string {
+  return `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">${NODE_ICONS[name]}</svg>`;
+}
+
 function icon(name: IconName): string {
   return `<svg class="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${ICONS[name]}"></path></svg>`;
 }
@@ -654,7 +732,7 @@ const STYLES = `
 .icon { fill: currentColor; }
 /* Showing eases in; hiding eases out, then turns invisible once the fade has finished. */
 .timeline {
-  position: relative; display: block;
+  position: relative; display: block; --gap: ${BREAK_GAP_MAX}px;
   transition:
     opacity 220ms cubic-bezier(0.2, 0, 0, 1),
     transform 220ms cubic-bezier(0.2, 0, 0, 1),
@@ -683,8 +761,10 @@ const STYLES = `
   --c: var(--fgColor-muted, #59636e);
   position: absolute; left: 12px; margin-top: ${LINE_ZONE_PAD}px;
   transform: translate(-50%, -50%) scale(var(--m, 1));
-  width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%;
-  background: var(--c); cursor: pointer;
+  /* The icon sits on a page-coloured disc, so the line doesn't run through it. */
+  display: grid; place-items: center;
+  width: ${ICON_SIZE + 4}px; height: ${ICON_SIZE + 4}px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--page-bg); color: var(--c); cursor: pointer;
 }
 .dot[hidden] { display: none; }
 [data-tone="accent"] { --c: var(--fgColor-accent, #0969da); }
@@ -695,20 +775,38 @@ const STYLES = `
 [data-tone="open"] { --c: var(--fgColor-open, #1a7f37); }
 [data-tone="closed"] { --c: var(--fgColor-closed, #d1242f); }
 [data-tone="muted"] { --c: var(--fgColor-muted, #59636e); }
-/* Hollow shapes are filled with the page colour so the line doesn't show through them. */
-.dot[data-kind="description"], .dot[data-bot] {
-  width: 10px; height: 10px; background: var(--page-bg); box-shadow: inset 0 0 0 2px var(--c);
+.glyph {
+  width: ${ICON_SIZE}px; height: ${ICON_SIZE}px;
+  fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round;
 }
-.dot[data-kind="review"] { width: 9px; height: 9px; border-radius: 2px; }
-.dot[data-kind="changes"] { width: 12px; height: 4px; border-radius: 2px; }
-.dot[data-kind="milestone"] {
-  border-radius: 1px; transform: translate(-50%, -50%) scale(var(--m, 1)) rotate(45deg);
+.dot.on-screen { background: color-mix(in srgb, var(--c) 18%, var(--page-bg)); }
+.dot.hot { box-shadow: 0 0 0 1.5px var(--c); z-index: 1; }
+/* Too crowded for icons: small dots in each event's colour, hollow for bots. */
+.compact .dot { width: 8px; height: 8px; background: var(--c); box-shadow: none; }
+.compact .glyph { display: none; }
+.compact .dot[data-bot] { background: var(--page-bg); box-shadow: inset 0 0 0 2px var(--c); }
+.compact .dot.on-screen, .compact .dot.hot { outline: 2px solid var(--c); outline-offset: 2px; z-index: 1; }
+
+/* A quiet stretch of a day or more: a gap in the line between two slashes, with how long it
+   lasted written in the gap. --gap is set to what fits between the events either side. */
+.break { position: absolute; left: 12px; margin-top: ${LINE_ZONE_PAD}px; pointer-events: none; }
+.break::before {
+  content: ""; position: absolute; left: -3px; top: calc(var(--gap) / -2);
+  width: 6px; height: var(--gap); background: var(--page-bg);
 }
-.dot[data-kind="hidden"] {
-  width: 10px; height: 8px; border-radius: 2px; background: var(--page-bg);
-  outline: 1.5px dashed var(--c);
+.slash {
+  position: absolute; left: -4.5px; top: calc(var(--gap) / -2 - 0.75px);
+  width: 9px; height: 1.5px; border-radius: 1px; transform: rotate(-25deg);
+  background: var(--borderColor-emphasis, #818b98);
 }
-.dot.on-screen, .dot.hot { outline: 2px solid var(--c); outline-offset: 2px; z-index: 1; }
+.slash + .slash { top: calc(var(--gap) / 2 - 0.75px); }
+.quiet {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+  font: 300 9.5px/1 "${MONO}", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fgColor-muted, #59636e); white-space: nowrap;
+}
+/* No room to write in the gap: the time sits beside the line instead. */
+.tight-breaks .quiet { left: 8px; transform: translateY(-50%); }
 
 /* Connectors fan out from the dots to the labels. */
 .connectors {

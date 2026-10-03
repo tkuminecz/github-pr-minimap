@@ -76,28 +76,37 @@ function itemEvents(item: Element): TimelineEvent[] {
     ];
   }
 
-  return [...item.querySelectorAll('.TimelineItem')].flatMap(condensedEvent);
+  return condensedEvents(item);
 }
 
-function condensedEvent(row: Element): TimelineEvent[] {
-  const icon = badgeIcon(row);
-  if (!icon) return [];
+function condensedEvents(item: Element): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+  // Commit rows show no time of their own; the "added N commits" row above them shows the push's.
+  let pushedAt: string | null = null;
+  for (const row of item.querySelectorAll('.TimelineItem')) {
+    const icon = badgeIcon(row);
+    if (!icon) continue;
 
-  const body = row.querySelector(':scope > .TimelineItem-body') ?? row;
-  const text = normalize(body.textContent);
-  const base = { el: row, author: authorName(body), time: timeIn(body) };
+    const body = row.querySelector(':scope > .TimelineItem-body') ?? row;
+    const text = normalize(body.textContent);
+    const base = { el: row, author: authorName(body), time: timeIn(body) };
 
-  if (icon === 'git-commit') {
-    const title = normalize(row.querySelector('.markdown-title')?.textContent);
-    return [{ kind: 'commit', ...base, title }];
+    if (icon === 'git-commit') {
+      const title = normalize(row.querySelector('.markdown-title')?.textContent);
+      events.push({ kind: 'commit', ...base, time: base.time ?? pushedAt, title });
+      continue;
+    }
+    pushedAt = null;
+    // The same push icon heads "added N commits" rows; the commits below it are the real events.
+    if (icon === 'repo-push') {
+      if (/\bforce-pushed\b/.test(text)) events.push({ kind: 'force_push', ...base });
+      else pushedAt = base.time;
+      continue;
+    }
+    const milestone = milestoneOf(icon, text);
+    if (milestone) events.push({ kind: 'milestone', ...base, milestone });
   }
-  // The same push icon heads "added N commits" rows; the commits below it are the real events.
-  if (icon === 'repo-push') {
-    return /\bforce-pushed\b/.test(text) ? [{ kind: 'force_push', ...base }] : [];
-  }
-
-  const milestone = milestoneOf(icon, text);
-  return milestone ? [{ kind: 'milestone', ...base, milestone }] : [];
+  return events;
 }
 
 function milestoneOf(icon: string, text: string): Milestone | null {

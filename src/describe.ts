@@ -1,3 +1,4 @@
+import type { NodeIcon } from './node-icons';
 import type { Entry, Milestone, ReviewState } from './types';
 
 /** Primer colour role for a row's dot. */
@@ -13,6 +14,8 @@ export type Tone =
 
 export interface Description {
   tone: Tone;
+  /** The event's icon on the timeline line. */
+  icon: NodeIcon;
   /** Shown in bold at the start of the row; null when the row is about the event, not a person. */
   who: string | null;
   /** What happened, short enough for a row: "approved", "3 commits", "Merged". */
@@ -28,29 +31,27 @@ export interface Description {
 
 const COMMIT_TITLES_SHOWN = 3;
 
-const REVIEWS: Record<ReviewState, { what: string; tone: Tone }> = {
-  approved: { what: 'approved', tone: 'success' },
-  changes_requested: { what: 'requested changes', tone: 'danger' },
-  commented: { what: 'reviewed', tone: 'accent' },
+const REVIEWS: Record<ReviewState, { what: string; tone: Tone; icon: NodeIcon }> = {
+  approved: { what: 'approved', tone: 'success', icon: 'thumbs-up' },
+  changes_requested: { what: 'requested changes', tone: 'danger', icon: 'file-warning' },
+  commented: { what: 'reviewed', tone: 'accent', icon: 'file-text' },
 };
 
-const MILESTONES: Record<Milestone, { what: string; verb: string; tone: Tone }> = {
-  merged: { what: 'Merged', verb: 'merged this PR', tone: 'done' },
-  closed: {
-    what: 'Closed',
-    verb: 'closed this PR',
-    tone: 'closed',
-  },
-  reopened: { what: 'Reopened', verb: 'reopened this PR', tone: 'open' },
+const MILESTONES: Record<Milestone, { what: string; verb: string; tone: Tone; icon: NodeIcon }> = {
+  merged: { what: 'Merged', verb: 'merged this PR', tone: 'done', icon: 'git-merge' },
+  closed: { what: 'Closed', verb: 'closed this PR', tone: 'closed', icon: 'octagon-x' },
+  reopened: { what: 'Reopened', verb: 'reopened this PR', tone: 'open', icon: 'rotate-ccw' },
   ready_for_review: {
     what: 'Ready for review',
     verb: 'marked this ready for review',
     tone: 'open',
+    icon: 'send',
   },
   draft: {
     what: 'Converted to draft',
     verb: 'converted this to a draft',
     tone: 'muted',
+    icon: 'pencil',
   },
 };
 
@@ -68,6 +69,7 @@ export function describeEntry(entry: Entry, now: Date = new Date()): Description
         ...none,
         ...times,
         tone: 'muted',
+        icon: 'git-pull-request',
         what: 'PR description',
         summary: entry.author ? `${entry.author} opened this PR` : 'PR description',
         detail: entry.snippet,
@@ -77,7 +79,13 @@ export function describeEntry(entry: Entry, now: Date = new Date()): Description
       return {
         ...person,
         ...times,
-        tone: entry.isBot ? 'muted' : 'accent',
+        // Bots, and comments GitHub hid as spam, shouldn't stand out.
+        tone: entry.isBot || !entry.author ? 'muted' : 'accent',
+        icon: !entry.author
+          ? 'message-square-dashed'
+          : entry.isBot
+            ? 'bot-message-square'
+            : 'message-square',
         // For bots the dot and "bot" tag already say it; leave the room for the name.
         what: entry.author ? (entry.isBot ? '' : 'commented') : 'Hidden comment',
         summary: entry.author ? `${byline(entry.author, entry.isBot)} commented` : 'Hidden comment',
@@ -90,7 +98,10 @@ export function describeEntry(entry: Entry, now: Date = new Date()): Description
         ...times,
         who: entry.author,
         isBot: entry.isBot,
-        tone: entry.isBot ? 'muted' : review.tone,
+        // A bot's verdict counts as much as anyone's; only its plain review comments are muted, as
+        // are reviews GitHub hid as spam.
+        tone: (entry.isBot && entry.state === 'commented') || !entry.author ? 'muted' : review.tone,
+        icon: review.icon,
         what: entry.author ? review.what : 'Hidden review',
         summary: entry.author
           ? `${byline(entry.author, entry.isBot)} ${review.what}`
@@ -108,6 +119,7 @@ export function describeEntry(entry: Entry, now: Date = new Date()): Description
         ...none,
         ...times,
         tone: forced ? 'attention' : 'muted',
+        icon: forced ? 'hard-hat' : 'wrench',
         what,
         summary: what,
         detail: titles.join('\n'),
@@ -119,6 +131,7 @@ export function describeEntry(entry: Entry, now: Date = new Date()): Description
         ...none,
         ...times,
         tone: m.tone,
+        icon: m.icon,
         what: m.what,
         summary: entry.author ? `${entry.author} ${m.verb}` : m.what,
       };
@@ -128,6 +141,7 @@ export function describeEntry(entry: Entry, now: Date = new Date()): Description
         ...none,
         ...times,
         tone: 'muted',
+        icon: 'ellipsis',
         what: `${entry.count} hidden items`,
         summary: `${entry.count} hidden items`,
         detail: 'Click to load them',
@@ -161,7 +175,11 @@ const UNITS: [Intl.RelativeTimeFormatUnit, string, number][] = [
 export function shortTime(iso: string, now: Date = new Date()): string | null {
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return null;
-  const seconds = Math.abs(now.getTime() - then) / 1000;
+  return shortDuration(Math.abs(now.getTime() - then) / 1000);
+}
+
+/** "3d", "2w": a length of time, as compact as the time column. */
+export function shortDuration(seconds: number): string {
   for (const [, suffix, size] of UNITS) {
     if (seconds >= size) return `${Math.floor(seconds / size)}${suffix}`;
   }

@@ -33,7 +33,7 @@ describe('groupEntries', () => {
   it('wraps a single commit in a changes group', () => {
     const c = commit('one');
     expect(groupEntries([c])).toEqual([
-      { kind: 'changes', el: c.el, commits: [c], forcePushes: [], time: null },
+      { kind: 'changes', el: c.el, commits: [c], forcePushes: [], time: null, firstTime: null },
     ]);
   });
 
@@ -51,6 +51,7 @@ describe('groupEntries', () => {
         commits: [c1, c2],
         forcePushes: [fp1, fp2],
         time: '2026-09-02T10:00:00Z',
+        firstTime: '2026-09-01T10:00:00Z',
       },
     ]);
   });

@@ -1,6 +1,6 @@
 import { fanLayout } from '../src/fan';
 
-const OPTS = { minLabelPitch: 18, minOverhang: 24, maxOverhang: 60 };
+const OPTS = { minLabelPitch: 18, minOverhang: 24, maxOverhang: 60, breakRoom: 10 };
 // Rounded to 0.01px; `+ 0` turns -0 into 0 so positions compare equal.
 const rounded = (ys: number[]) => ys.map((y) => Math.round(y * 100) / 100 + 0);
 const labelYs = (layout: ReturnType<typeof fanLayout>) => rounded(layout.labels.map((l) => l.y));
@@ -15,6 +15,18 @@ describe('fanLayout', () => {
   // evenly spaced between.
   it('spreads the dots evenly from the top of the line to the bottom', () => {
     expect(fanLayout(5, 0, 400, OPTS).dotYs).toEqual([0, 100, 200, 300, 400]);
+  });
+
+  // A quiet stretch between two events gets a little extra room on the line (10px here) for its
+  // break mark. The other events stay evenly spaced and the line keeps its length.
+  it('adds room for quiet-stretch breaks, keeping the line its length', () => {
+    expect(rounded(fanLayout(5, 0, 400, OPTS, [1]).dotYs)).toEqual([0, 97.5, 205, 302.5, 400]);
+  });
+
+  // On a crowded line the breaks share at most a quarter of its length, so the events keep most of
+  // it: one break on a 20px line gets 5px, not 10px.
+  it('gives breaks at most a quarter of a crowded line', () => {
+    expect(rounded(fanLayout(3, 0, 20, OPTS, [0]).dotYs)).toEqual([0, 12.5, 20]);
   });
 
   // A lone event sits at the top of the line, its label level with it.

@@ -83,12 +83,55 @@ try {
     !!box && box.x + box.width > WIDTH - 40 && box.y + box.height <= HEIGHT,
     JSON.stringify(box),
   );
+  // Quiet stretches of a day or more break the line, halfway between the events either side,
+  // and each break adds 16px to a short line.
+  const quiet = await page.locator('pr-minimap').evaluate((h) => {
+    const root = h.shadowRoot;
+    const ys = [...root.querySelectorAll('.dot:not([hidden])')].map((d) => {
+      const r = d.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
+    return [...root.querySelectorAll('.break')].map((b) => {
+      const y = b.getBoundingClientRect().top;
+      return {
+        label: b.textContent,
+        between: ys.some((top, i) => top < y && (ys[i + 1] ?? 0) > y),
+      };
+    });
+  });
+  check(
+    'quiet stretches break the line between events',
+    quiet.every((q) => q.between),
+    quiet.length ? quiet.map((q) => q.label).join(' ') : 'none on this PR',
+  );
+
   const lineHeight = (await page.locator('pr-minimap .line').boundingBox())?.height ?? 0;
-  const expectedLine = Math.min(HEIGHT * 0.6, (after - 1) * 32);
+  const expectedLine = Math.min(HEIGHT * 0.6, (after - 1) * 32 + quiet.length * 16);
   check(
     'the line runs 60% of the window, or shorter with dots 32px apart',
     after < 2 || Math.abs(lineHeight - expectedLine) < 2,
     `${lineHeight}px for ${after} dots`,
+  );
+
+  // Each event is drawn as its icon, unless they're too close together for icons to fit.
+  const nodes = await page.locator('pr-minimap .timeline').evaluate((t) => {
+    const dots = [...t.querySelectorAll('.dot:not([hidden])')];
+    const ys = dots.map((d) => d.getBoundingClientRect().top);
+    const closest = Math.min(...ys.slice(1).map((y, i) => y - ys[i]));
+    const icons = dots.filter(
+      (d) => (d.querySelector('.glyph')?.getBoundingClientRect().width ?? 0) > 0,
+    );
+    return {
+      compact: t.classList.contains('compact'),
+      closest,
+      icons: icons.length,
+      dots: dots.length,
+    };
+  });
+  check(
+    'events show as icons, or plain dots when crowded',
+    nodes.compact ? nodes.closest < 16 && nodes.icons === 0 : nodes.icons === nodes.dots,
+    JSON.stringify(nodes),
   );
 
   // No box: clicks between the labels reach GitHub's page underneath.

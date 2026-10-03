@@ -190,6 +190,19 @@ describe('extractEvents', () => {
     }
   });
 
+  // Commit rows show no time of their own. The "added N commits" row above them shows when they
+  // were pushed, and that's what places them in time (for the quiet-stretch breaks on the line).
+  // Commits that came with the PR when it was opened have no such row, so they stay undated.
+  it('dates commits by the push that added them', () => {
+    const times = (name: string) =>
+      extractEvents(loadFixture(name)).flatMap((e) => (e.kind === 'commit' ? [e.time] : []));
+    expect(times('next-pushes')).toEqual([
+      ...Array(4).fill('2026-10-02T06:04:31+09:00'),
+      ...Array(2).fill('2026-10-02T06:04:32+09:00'),
+    ]);
+    expect(times('k8s-long')).toEqual([null, null]);
+  });
+
   // The content script runs on every github.com page. Off a PR, there's no timeline and it must
   // quietly return nothing.
   it('returns nothing for a page without a PR timeline', () => {

@@ -7,30 +7,29 @@ export interface FilterOptions {
   botsOnlyOnOwnPRs: string[];
   /** Bots whose comments and reviews never show. */
   hiddenBots: string[];
+  /** Bots whose approvals show, but none of their comments or other reviews. */
+  approvalsOnlyBots: string[];
 }
 
 /**
- * Leaves out comments and reviews from bots that are noise: `hiddenBots` always, and
- * `botsOnlyOnOwnPRs` unless the viewer opened the PR. The PR's author is whoever wrote its
- * description. Bot logins are matched in any case.
+ * Leaves out comments and reviews from bots that are noise: `hiddenBots` always,
+ * `botsOnlyOnOwnPRs` unless the viewer opened the PR, and everything but the approvals of
+ * `approvalsOnlyBots`. The PR's author is whoever wrote its description. Bot logins are matched in
+ * any case.
  */
 export function filterEvents(events: TimelineEvent[], options: FilterOptions): TimelineEvent[] {
   const author = events.find((e) => e.kind === 'description')?.author;
   const own = !!author && !!options.viewer && same(author, options.viewer);
-  const hidden = new Set(
-    [...options.hiddenBots, ...(own ? [] : options.botsOnlyOnOwnPRs)].map((n) => n.toLowerCase()),
-  );
-  if (hidden.size === 0) return events;
+  const lower = (names: string[]) => new Set(names.map((n) => n.toLowerCase()));
+  const hidden = lower([...options.hiddenBots, ...(own ? [] : options.botsOnlyOnOwnPRs)]);
+  const approvalsOnly = lower(options.approvalsOnlyBots);
 
-  return events.filter(
-    (e) =>
-      !(
-        (e.kind === 'comment' || e.kind === 'review') &&
-        e.isBot &&
-        e.author &&
-        hidden.has(e.author.toLowerCase())
-      ),
-  );
+  return events.filter((e) => {
+    if ((e.kind !== 'comment' && e.kind !== 'review') || !e.isBot || !e.author) return true;
+    const bot = e.author.toLowerCase();
+    if (hidden.has(bot)) return false;
+    return !approvalsOnly.has(bot) || (e.kind === 'review' && e.state === 'approved');
+  });
 }
 
 /** The signed-in user's login, from the meta tag GitHub puts on every page; null when signed out. */

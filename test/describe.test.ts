@@ -1,5 +1,12 @@
 import { describeEntry, relativeTime, shortTime } from '../src/describe';
-import type { ChangesGroup, CommitEvent, Entry, ForcePushEvent, ReviewState } from '../src/types';
+import type {
+  ChangesGroup,
+  CommitEvent,
+  Entry,
+  ForcePushEvent,
+  Milestone,
+  ReviewState,
+} from '../src/types';
 
 const el = () => document.createElement('div');
 const NOW = new Date('2026-10-02T12:00:00Z');
@@ -23,6 +30,31 @@ const changes = (commits: CommitEvent[], forcePushes: ForcePushEvent[]): Changes
   commits,
   forcePushes,
   time: null,
+  firstTime: null,
+});
+const comment = (isBot: boolean, author: string | null = 'amy'): Entry => ({
+  kind: 'comment',
+  el: el(),
+  author,
+  time: null,
+  isBot,
+  snippet: '',
+});
+const review = (state: ReviewState, isBot = false): Entry => ({
+  kind: 'review',
+  el: el(),
+  author: 'amy',
+  time: null,
+  isBot,
+  state,
+  snippet: '',
+});
+const milestone = (m: Milestone): Entry => ({
+  kind: 'milestone',
+  el: el(),
+  author: 'amy',
+  time: null,
+  milestone: m,
 });
 
 describe('describeEntry', () => {
@@ -114,7 +146,8 @@ describe('describeEntry', () => {
     expect(describeEntry({ ...merged, author: null }, NOW).summary).toBe('Merged');
   });
 
-  // GitHub hides spam-flagged reviews, including who wrote them. The row mustn't say "null".
+  // GitHub hides spam-flagged reviews, including who wrote them. The row mustn't say "null", and
+  // spam shouldn't stand out, so it's muted.
   it('labels a review with no visible author', () => {
     const hidden: Entry = {
       kind: 'review',
@@ -125,7 +158,12 @@ describe('describeEntry', () => {
       state: 'commented',
       snippet: '',
     };
-    expect(describeEntry(hidden, NOW)).toMatchObject({ who: null, what: 'Hidden review' });
+    expect(describeEntry(hidden, NOW)).toMatchObject({
+      who: null,
+      what: 'Hidden review',
+      tone: 'muted',
+    });
+    expect(describeEntry(comment(false, null), NOW).tone).toBe('muted');
   });
 
   // The top row is the PR description, the natural "back to the top" target.
@@ -143,6 +181,60 @@ describe('describeEntry', () => {
       summary: 'amy opened this PR',
       detail: 'Adds a thing',
     });
+  });
+
+  // Each kind of event gets an icon that reads at a glance: a speech bubble for comments, a document
+  // for reviews, a thumbs-up for approvals, builder's tools for pushes, a merge for merged, a stop
+  // sign for closed. No two kinds of event that mean different things share an icon.
+  it('gives every kind of event its own icon', () => {
+    const cases: Record<string, Entry> = {
+      description: {
+        kind: 'description',
+        el: el(),
+        author: 'amy',
+        time: null,
+        snippet: '',
+      },
+      comment: comment(false),
+      botComment: comment(true),
+      hiddenComment: comment(false, null),
+      approved: review('approved'),
+      changesRequested: review('changes_requested'),
+      reviewed: review('commented'),
+      commits: changes([commit('a')], []),
+      forcePushed: changes([commit('a')], [forcePush()]),
+      merged: milestone('merged'),
+      closed: milestone('closed'),
+      reopened: milestone('reopened'),
+      readyForReview: milestone('ready_for_review'),
+      draft: milestone('draft'),
+      hidden: { kind: 'hidden', el: el(), author: null, time: null, count: 3 },
+    };
+    const icons = Object.fromEntries(
+      Object.entries(cases).map(([name, entry]) => [name, describeEntry(entry, NOW).icon]),
+    );
+    expect(icons).toMatchObject({
+      comment: 'message-square',
+      approved: 'thumbs-up',
+      reviewed: 'file-text',
+      commits: 'wrench',
+      forcePushed: 'hard-hat',
+      merged: 'git-merge',
+      closed: 'octagon-x',
+    });
+    expect(new Set(Object.values(icons)).size).toBe(Object.keys(cases).length);
+  });
+
+  // A bot's approval or change request is a real verdict on the PR (jbparabot's approvals are the
+  // reason it's shown at all), so it keeps its colour. Its plain review comments stay muted, like
+  // its other comments.
+  it("keeps the colour of a bot's verdicts", () => {
+    expect(describeEntry(review('approved', true), NOW)).toMatchObject({
+      icon: 'thumbs-up',
+      tone: 'success',
+    });
+    expect(describeEntry(review('changes_requested', true), NOW).tone).toBe('danger');
+    expect(describeEntry(review('commented', true), NOW).tone).toBe('muted');
   });
 
   // Rows show a compact time ("3d"); the hover shows the long form ("3 days ago").

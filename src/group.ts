@@ -29,10 +29,15 @@ export function groupEntries(events: TimelineEvent[]): Entry[] {
 function changesGroup(el: Element, run: (CommitEvent | ForcePushEvent)[]): ChangesGroup {
   const commits = run.filter((e): e is CommitEvent => e.kind === 'commit');
   const forcePushes = run.filter((e): e is ForcePushEvent => e.kind === 'force_push');
-  const times = run.flatMap((e) => (e.time ? [e.time] : []));
-  const latest = times.reduce<string | null>(
-    (best, t) => (best === null || Date.parse(t) > Date.parse(best) ? t : best),
-    null,
-  );
-  return { kind: 'changes', el, commits, forcePushes, time: latest };
+  const times = run
+    .flatMap((e) => (e.time ? [e.time] : []))
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  return {
+    kind: 'changes',
+    el,
+    commits,
+    forcePushes,
+    time: times.at(-1) ?? null,
+    firstTime: times[0] ?? null,
+  };
 }

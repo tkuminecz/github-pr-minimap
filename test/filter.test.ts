@@ -1,6 +1,7 @@
 import { currentViewer, filterEvents } from '../src/filter';
 import { groupEntries } from '../src/group';
-import type { TimelineEvent } from '../src/types';
+import { SETTINGS } from '../src/settings';
+import type { ReviewState, TimelineEvent } from '../src/types';
 
 const el = () => document.createElement('div');
 const description = (author: string): TimelineEvent => ({
@@ -18,13 +19,17 @@ const comment = (author: string, isBot = false): TimelineEvent => ({
   isBot,
   snippet: '',
 });
-const review = (author: string, isBot = false): TimelineEvent => ({
+const review = (
+  author: string,
+  isBot = false,
+  state: ReviewState = 'commented',
+): TimelineEvent => ({
   kind: 'review',
   el: el(),
   author,
   time: null,
   isBot,
-  state: 'commented',
+  state,
   snippet: '',
 });
 const commit = (title: string): TimelineEvent => ({
@@ -35,7 +40,11 @@ const commit = (title: string): TimelineEvent => ({
   title,
 });
 
-const OPTS = { botsOnlyOnOwnPRs: ['coderabbitai'], hiddenBots: ['linear-code', 'blacksmith-sh'] };
+const OPTS = {
+  botsOnlyOnOwnPRs: ['coderabbitai'],
+  hiddenBots: ['linear-code', 'blacksmith-sh'],
+  approvalsOnlyBots: ['jbparabot'],
+};
 const who = (events: TimelineEvent[]) =>
   events.map((e) => `${e.kind}:${'author' in e ? e.author : ''}`);
 
@@ -44,7 +53,7 @@ describe('filterEvents', () => {
     description('amy'),
     comment('coderabbitai', true),
     review('coderabbitai', true),
-    comment('github-actions', true),
+    comment('dependabot', true),
     comment('bob'),
   ];
 
@@ -53,7 +62,7 @@ describe('filterEvents', () => {
   it("leaves CodeRabbit out of someone else's PR", () => {
     expect(who(filterEvents(timeline, { ...OPTS, viewer: 'tim' }))).toEqual([
       'description:amy',
-      'comment:github-actions',
+      'comment:dependabot',
       'comment:bob',
     ]);
   });
@@ -87,6 +96,35 @@ describe('filterEvents', () => {
       'comment:coderabbitai',
     ]);
     expect(who(filterEvents(events, { ...OPTS, viewer: 'tim' }))).toEqual(['description:amy']);
+  });
+
+  // Some bots only matter when they approve: their approvals show, and nothing else of theirs does.
+  it('keeps only the approvals of approvals-only bots', () => {
+    const approval = review('jbparabot', true, 'approved');
+    const events = [
+      description('amy'),
+      comment('jbparabot', true),
+      review('jbparabot', true, 'commented'),
+      review('jbparabot', true, 'changes_requested'),
+      approval,
+    ];
+    expect(filterEvents(events, { ...OPTS, viewer: 'amy' })).toEqual([events[0], approval]);
+  });
+
+  // The defaults asked for: GitHub Actions never shows, and jbparabot only shows its approvals.
+  it('hides GitHub Actions, and all of jbparabot but its approvals, by default', () => {
+    const events = [
+      description('amy'),
+      comment('github-actions', true),
+      comment('jbparabot', true),
+      review('jbparabot', true, 'approved'),
+      comment('bob'),
+    ];
+    expect(who(filterEvents(events, { ...SETTINGS, viewer: 'amy' }))).toEqual([
+      'description:amy',
+      'review:jbparabot',
+      'comment:bob',
+    ]);
   });
 
   // Only bot accounts are matched, so a person with a similar name is never hidden.

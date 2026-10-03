@@ -66,8 +66,10 @@ export interface ChangesGroup {
   el: Element;
   commits: CommitEvent[];
   forcePushes: ForcePushEvent[];
-  /** Latest timestamp among the pushes. GitHub shows times on force-pushes but not on commits. */
+  /** Latest known timestamp among the pushes. */
   time: string | null;
+  /** Earliest known timestamp among the pushes. */
+  firstTime: string | null;
 }
 
 /** One row on the minimap. */

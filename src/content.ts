@@ -56,6 +56,7 @@ function sync(): void {
     viewer: currentViewer(document),
     botsOnlyOnOwnPRs: SETTINGS.botsOnlyOnOwnPRs,
     hiddenBots: SETTINGS.hiddenBots,
+    approvalsOnlyBots: SETTINGS.approvalsOnlyBots,
   });
   minimap.setEntries(groupEntries(events), discussion);
 
