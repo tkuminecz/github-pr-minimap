@@ -1,6 +1,6 @@
 {
   "name": "github-pr-minimap",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Chrome extension that adds an activity minimap to GitHub pull request conversations",
   "type": "module",
