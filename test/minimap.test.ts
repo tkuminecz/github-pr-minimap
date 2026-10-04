@@ -471,8 +471,9 @@ describe('Minimap', () => {
     expect(hostOf().style.top).toBe('244px');
   });
 
-  // When a newer release is out, a link to it shows beside the eye, opening in a new tab. It stays
-  // when the timeline is hidden, since it's about the extension rather than the PR.
+  // When a newer release is out, a small link to it shows beside the eye, opening in a new tab. It
+  // says which version in its tooltip: there's no room for words beside the eye, where the top
+  // label sits. It stays when the timeline is hidden, since it's about the extension, not the PR.
   it('links to a newer release beside the eye', () => {
     const { minimap, entries, discussion } = setup();
     minimap.setEntries(entries, discussion);
@@ -482,10 +483,12 @@ describe('Minimap', () => {
     minimap.shadowRoot.querySelector<HTMLButtonElement>('.eye')?.click();
     expect(link()).toMatchObject({
       hidden: false,
-      textContent: 'v0.2.0 available',
       href: 'https://github.com/tkuminecz/github-pr-minimap/releases/latest',
       target: '_blank',
     });
+    expect(link()?.getAttribute('aria-label')).toBe('GitHub PR Minimap v0.2.0 available');
+    expect(link()?.title).toMatch(/^v0\.2\.0 available\./);
+    expect(link()?.querySelector('svg')).not.toBeNull();
   });
 
   // The eye shows or hides the whole timeline, leaving just the eye. Hiding fades it out rather

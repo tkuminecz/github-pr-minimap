@@ -3,7 +3,7 @@ import { type FanLayout, fanLayout } from './fan';
 import { MONO, SANS } from './fonts';
 import { ICONS, type IconName } from './icons';
 import { magnify } from './magnify';
-import { NODE_ICONS, type NodeIcon } from './node-icons';
+import { NODE_ICONS, type NodeIcon, UPDATE_ICON } from './node-icons';
 import { type QuietStretch, quietStretches } from './quiet';
 import type { Entry, HiddenEvent, Span } from './types';
 
@@ -202,13 +202,17 @@ export class Minimap {
     this.host.remove();
   }
 
-  /** Shows a link to a newer release of the extension, beside the eye. */
+  /**
+   * Shows a link to a newer release of the extension: a small arrow beside the eye, since the top
+   * label sits just left of the eye and leaves no room for words. The tooltip says which version.
+   */
   showUpdate(version: string, url: string): void {
     this.update.href = url;
-    this.update.textContent = `v${version} available`;
+    this.update.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${UPDATE_ICON}</svg>`;
+    this.update.setAttribute('aria-label', `GitHub PR Minimap v${version} available`);
     this.update.title =
-      `Version ${version} of GitHub PR Minimap is out. Run the install script again, or unzip ` +
-      'the new release over the old folder, then reload the extension in chrome://extensions.';
+      `v${version} available. Run the install script again (or unzip the new release over the ` +
+      'old folder), then reload the extension in chrome://extensions.';
     this.update.hidden = false;
   }
 
@@ -743,15 +747,19 @@ const STYLES = `
 .eye:focus-visible { outline: 2px solid var(--focus-outlineColor, #0969da); }
 .eye[aria-pressed="false"] { opacity: 0.7; }
 .icon { fill: currentColor; }
-/* A newer release is out: a small link beside the eye, level with it. */
+/* A newer release is out: a small arrow in a blue circle, in the strip between the eye and the
+   labels, level with the eye. */
 .update {
-  position: absolute; top: -34px; right: ${LINE_RIGHT + 16}px; height: 18px; padding: 0 7px;
-  border-radius: 999px; background: var(--bgColor-accent-muted, #ddf4ff);
-  font: 600 11px/18px "${SANS}", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--fgColor-accent, #0969da); text-decoration: none; white-space: nowrap;
+  position: absolute; top: -33px; right: ${LINE_RIGHT + 14}px;
+  display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bgColor-accent-emphasis, #0969da); color: var(--fgColor-onEmphasis, #fff);
 }
 .update[hidden] { display: none; }
-.update:hover { text-decoration: underline; }
+.update svg {
+  width: 11px; height: 11px;
+  fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+}
+.update:hover { filter: brightness(1.1); }
 .update:focus-visible { outline: 2px solid var(--focus-outlineColor, #0969da); outline-offset: 1px; }
 /* Showing eases in; hiding eases out, then turns invisible once the fade has finished. */
 .timeline {

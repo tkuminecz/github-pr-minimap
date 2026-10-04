@@ -33,4 +33,7 @@ export const NODE_ICONS = {
     '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
 } as const;
 
+/** Marks a newer release of the extension. */
+export const UPDATE_ICON = '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>';
+
 export type NodeIcon = keyof typeof NODE_ICONS;
