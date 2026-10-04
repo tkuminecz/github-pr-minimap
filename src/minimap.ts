@@ -104,6 +104,7 @@ export class Minimap {
   private readonly line: HTMLElement;
   private readonly connectors: SVGSVGElement;
   private readonly eye: HTMLButtonElement;
+  private readonly update: HTMLAnchorElement;
   private readonly tooltip: HTMLElement;
   private readonly geometry: Geometry;
   private readonly storage: KeyValueStorage | null;
@@ -153,6 +154,7 @@ export class Minimap {
     this.host = document.createElement(HOST_TAG);
     this.shadowRoot = this.host.attachShadow({ mode: 'open' });
     this.shadowRoot.innerHTML = `<style>${STYLES}</style>
+      <a class="update" target="_blank" rel="noopener" hidden></a>
       <button type="button" class="eye"></button>
       <nav class="timeline" aria-label="Pull request activity">
         <svg class="connectors" aria-hidden="true"></svg>
@@ -166,6 +168,7 @@ export class Minimap {
     this.line = $('.line');
     this.connectors = $('.connectors');
     this.eye = $('.eye');
+    this.update = $('.update');
     this.tooltip = $('.tooltip');
 
     this.eye.addEventListener('click', () => this.setVisible(!this.visible, true));
@@ -197,6 +200,16 @@ export class Minimap {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.host.remove();
+  }
+
+  /** Shows a link to a newer release of the extension, beside the eye. */
+  showUpdate(version: string, url: string): void {
+    this.update.href = url;
+    this.update.textContent = `v${version} available`;
+    this.update.title =
+      `Version ${version} of GitHub PR Minimap is out. Run the install script again, or unzip ` +
+      'the new release over the old folder, then reload the extension in chrome://extensions.';
+    this.update.hidden = false;
   }
 
   /** Shows `entries` for the timeline in `rangeEl`. Cheap to call when nothing changed. */
@@ -718,7 +731,7 @@ const STYLES = `
   /* No box: only the line, dots, labels and eye take clicks; the page shows through the rest. */
   pointer-events: none;
 }
-.eye, .label, .dot { pointer-events: auto; }
+.eye, .label, .dot, .update { pointer-events: auto; }
 /* Clear of the line's top end, which never moves, even while magnifying. */
 .eye {
   position: absolute; z-index: 2; top: -36px; right: ${LINE_RIGHT - 11}px;
@@ -730,6 +743,16 @@ const STYLES = `
 .eye:focus-visible { outline: 2px solid var(--focus-outlineColor, #0969da); }
 .eye[aria-pressed="false"] { opacity: 0.7; }
 .icon { fill: currentColor; }
+/* A newer release is out: a small link beside the eye, level with it. */
+.update {
+  position: absolute; top: -34px; right: ${LINE_RIGHT + 16}px; height: 18px; padding: 0 7px;
+  border-radius: 999px; background: var(--bgColor-accent-muted, #ddf4ff);
+  font: 600 11px/18px "${SANS}", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--fgColor-accent, #0969da); text-decoration: none; white-space: nowrap;
+}
+.update[hidden] { display: none; }
+.update:hover { text-decoration: underline; }
+.update:focus-visible { outline: 2px solid var(--focus-outlineColor, #0969da); outline-offset: 1px; }
 /* Showing eases in; hiding eases out, then turns invisible once the fade has finished. */
 .timeline {
   position: relative; display: block; --gap: ${BREAK_GAP_MAX}px;

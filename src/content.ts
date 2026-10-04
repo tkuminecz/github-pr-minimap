@@ -6,6 +6,7 @@ import { groupEntries } from './group';
 import { Minimap } from './minimap';
 import { isConversationTab } from './route';
 import { SETTINGS } from './settings';
+import { browserUpdateDeps, isNewer, latestVersion, RELEASES_URL } from './updates';
 import { affectsTimeline } from './watch';
 
 // Runs on every github.com page, because GitHub switches pages without reloading and a content
@@ -44,6 +45,7 @@ function sync(): void {
   if (!minimap) {
     void loadFonts();
     minimap = new Minimap({ onHiddenClick: (hidden) => loader.load(hidden.el) });
+    void offerUpdate(minimap);
   }
   if (!minimap.isMounted) minimap.mount();
   if (observedRange !== discussion) {
@@ -61,6 +63,16 @@ function sync(): void {
   minimap.setEntries(groupEntries(events), discussion);
 
   if (SETTINGS.autoLoadHidden) autoLoad(events.flatMap((e) => (e.kind === 'hidden' ? [e.el] : [])));
+}
+
+/** Shows a link to a newer release, when there is one. Checked once per page load. */
+let latest: Promise<string | null> | null = null;
+async function offerUpdate(panel: Minimap): Promise<void> {
+  latest ??= latestVersion(browserUpdateDeps);
+  const version = await latest;
+  if (version && isNewer(version, chrome.runtime.getManifest().version)) {
+    panel.showUpdate(version, RELEASES_URL);
+  }
 }
 
 function autoLoad(forms: Element[]): void {

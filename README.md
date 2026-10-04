@@ -54,18 +54,23 @@ the list covers the whole PR.
 
 ## Install
 
-1. Download `github-pr-minimap-v….zip` from the latest
-   [release](https://github.com/tkuminecz/github-pr-minimap/releases/latest).
-2. Unzip it somewhere you'll keep it. Chrome loads the extension from that folder every time it
-   starts, so don't leave it in Downloads if you clear that out.
-3. Open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked** and
-   pick the `github-pr-minimap` folder.
+```sh
+curl -fsSL https://raw.githubusercontent.com/tkuminecz/github-pr-minimap/main/install.sh | sh
+```
 
-It works the same way in Edge, Brave and Arc.
+That downloads the latest release into `~/.github-pr-minimap` (set `PR_MINIMAP_DIR` to choose
+another folder). Then, just once, open `chrome://extensions`, turn on **Developer mode** (top
+right), click **Load unpacked** and choose that folder. On a Mac, Cmd+Shift+G in the file picker
+lets you paste the path, which the script leaves on your clipboard. It works the same way in Edge,
+Brave and Arc.
 
-**Updating:** download the new release and unzip it over the same folder, then click the reload
-icon on the extension's card in `chrome://extensions`. It isn't in the Chrome Web Store, so it
-doesn't update itself.
+**Updating:** when a new version is out, a "v… available" link shows beside the eye. Run the same
+command again, then click the reload icon on the extension's card in `chrome://extensions`. It
+isn't in the Chrome Web Store, so it doesn't update itself.
+
+**Without the script:** download `github-pr-minimap.zip` from the latest
+[release](https://github.com/tkuminecz/github-pr-minimap/releases/latest), unzip it somewhere you'll
+keep it, and load the `github-pr-minimap` folder as above. To update, unzip the new one over it.
 
 ### From source
 
@@ -111,8 +116,10 @@ git push --follow-tags
 ```
 
 Pushing the tag runs `.github/workflows/release.yml`, which runs every check, builds the extension
-and publishes a GitHub release with the zip attached. The manifest's version comes from
-`package.json` at build time. `pnpm package` makes the same zip locally, in `release/`.
+and publishes a GitHub release with `github-pr-minimap.zip` attached. The manifest's version comes
+from `package.json` at build time. `pnpm package` makes the same zip locally, in `release/`.
+Installed copies notice the new release within 12 hours: the extension asks GitHub's API for the
+latest release at most that often.
 
 ### How it reads the page
 

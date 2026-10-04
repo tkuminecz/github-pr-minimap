@@ -471,6 +471,23 @@ describe('Minimap', () => {
     expect(hostOf().style.top).toBe('244px');
   });
 
+  // When a newer release is out, a link to it shows beside the eye, opening in a new tab. It stays
+  // when the timeline is hidden, since it's about the extension rather than the PR.
+  it('links to a newer release beside the eye', () => {
+    const { minimap, entries, discussion } = setup();
+    minimap.setEntries(entries, discussion);
+    const link = () => minimap.shadowRoot.querySelector<HTMLAnchorElement>('a.update');
+    expect(link()?.hidden ?? true).toBe(true);
+    minimap.showUpdate('0.2.0', 'https://github.com/tkuminecz/github-pr-minimap/releases/latest');
+    minimap.shadowRoot.querySelector<HTMLButtonElement>('.eye')?.click();
+    expect(link()).toMatchObject({
+      hidden: false,
+      textContent: 'v0.2.0 available',
+      href: 'https://github.com/tkuminecz/github-pr-minimap/releases/latest',
+      target: '_blank',
+    });
+  });
+
   // The eye shows or hides the whole timeline, leaving just the eye. Hiding fades it out rather
   // than removing it instantly: it becomes transparent and inert (no clicks, no keyboard focus)
   // instead of display:none, which can't be animated. The choice is remembered for the next PR.
