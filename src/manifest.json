@@ -1,7 +1,6 @@
 {
   "manifest_version": 3,
   "name": "GitHub PR Minimap",
-  "version": "0.1.0",
   "description": "A minimap of comments, reviews and pushes on GitHub pull request conversations.",
   "content_scripts": [
     {

@@ -52,15 +52,29 @@ Commits, Checks) it goes away.
 Long PRs hide their middle behind "Load more". The extension loads those items automatically, so
 the list covers the whole PR.
 
-## Install (unpacked)
+## Install
+
+1. Download `github-pr-minimap-v….zip` from the latest
+   [release](https://github.com/tkuminecz/github-pr-minimap/releases/latest).
+2. Unzip it somewhere you'll keep it. Chrome loads the extension from that folder every time it
+   starts, so don't leave it in Downloads if you clear that out.
+3. Open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked** and
+   pick the `github-pr-minimap` folder.
+
+It works the same way in Edge, Brave and Arc.
+
+**Updating:** download the new release and unzip it over the same folder, then click the reload
+icon on the extension's card in `chrome://extensions`. It isn't in the Chrome Web Store, so it
+doesn't update itself.
+
+### From source
 
 ```sh
 pnpm install
 pnpm build
 ```
 
-Then in Chrome open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**
-and pick the `dist/` folder. After rebuilding, click the reload icon on the extension's card.
+Then load the `dist/` folder as above. After rebuilding, click the reload icon on the card.
 
 ## Settings
 
@@ -88,6 +102,17 @@ pnpm fixtures    # re-download the PR page fixtures after GitHub changes its mar
 
 `pnpm smoke` needs Playwright's Chromium once: `pnpm exec playwright install chromium`.
 It accepts a PR URL: `node scripts/smoke.mjs https://github.com/owner/repo/pull/123`.
+
+### Releasing
+
+```sh
+pnpm version patch -m "chore: release v%s"   # or minor / major: bumps package.json, commits, tags
+git push --follow-tags
+```
+
+Pushing the tag runs `.github/workflows/release.yml`, which runs every check, builds the extension
+and publishes a GitHub release with the zip attached. The manifest's version comes from
+`package.json` at build time. `pnpm package` makes the same zip locally, in `release/`.
 
 ### How it reads the page
 

@@ -1,0 +1,31 @@
+# Pushing a version tag (v0.2.0) builds the extension and publishes it as a GitHub release, with
+# the zip to install from attached. Make the tag with `pnpm version <patch|minor|major>`, then
+# `git push --follow-tags`.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - name: Check the tag matches package.json
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+      - run: pnpm package
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" "release/github-pr-minimap-$GITHUB_REF_NAME.zip"
+          --title "$GITHUB_REF_NAME" --generate-notes

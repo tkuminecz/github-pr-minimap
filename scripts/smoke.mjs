@@ -2,13 +2,14 @@
 // checks the activity timeline appears with readable labels, auto-loads hidden items, scrolls on click,
 // hides with the eye, and disappears on other tabs. Run `pnpm build` first.
 // Usage: node scripts/smoke.mjs [pr-url] [screenshot-dir]
+// SMOKE_EXTENSION=<folder> tests another build, such as an unzipped release, instead of dist/.
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 
 const PR_URL = process.argv[2] ?? 'https://github.com/kubernetes/kubernetes/pull/142046';
 const SHOTS = resolve(process.argv[3] ?? 'smoke-output');
-const EXTENSION = resolve('dist');
+const EXTENSION = resolve(process.env.SMOKE_EXTENSION ?? 'dist');
 const WIDTH = 1440;
 const HEIGHT = Number(process.env.SMOKE_HEIGHT ?? 900);
 

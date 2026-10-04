@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!dist", "!test/fixtures", "!node_modules"]
+    "includes": ["**", "!dist", "!release", "!smoke-output", "!test/fixtures", "!node_modules"]
   },
   "formatter": {
     "indentStyle": "space",
